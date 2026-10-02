@@ -1,0 +1,4 @@
+youtube-transcript-api>=1.2
+yt-dlp>=2026.1.1
+google-api-python-client>=2.100   # only used when an API key is configured
+# faster-whisper                  # optional: uncomment for --whisper

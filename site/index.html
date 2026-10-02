@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>직곡의 명상수업 · 말씀 검색</title>
+<meta name="description" content="직곡의 명상수업 영상 속 말씀을 검색하고, 그 장면으로 바로 이동하세요.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&family=Noto+Serif+KR:wght@500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="masthead">
+  <div class="wrap">
+    <h1 id="site-title">직곡의 명상수업 · 말씀 검색</h1>
+    <p class="lede" id="lede">영상 속에서 하신 말씀을 찾아, 그 순간으로 바로 이동합니다.</p>
+  </div>
+</header>
+
+<div class="wrap">
+  <form class="searchbar" role="search" onsubmit="return false">
+    <label class="sr-only" for="q">말씀 검색</label>
+    <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+    <input id="q" type="search" autocomplete="off" placeholder="예: 호흡, 에고, 깨어 있음…" autofocus>
+    <kbd class="hint" aria-hidden="true">/</kbd>
+  </form>
+
+  <div class="controls">
+    <label>유형 <select id="f-type"><option value="">전체</option></select></label>
+    <label>연도 <select id="f-year"><option value="">전체</option></select></label>
+    <label>정렬 <select id="f-sort">
+      <option value="">관련도</option>
+      <option value="new">최신순</option>
+      <option value="old">오래된순</option>
+    </select></label>
+    <span class="count" id="count" aria-live="polite"></span>
+  </div>
+
+  <div class="layout">
+    <aside class="player-panel" id="panel" hidden aria-label="재생 중">
+      <div class="player-frame"><div id="player"></div></div>
+      <div class="now">
+        <p class="now-title" id="now-title"></p>
+        <div class="now-nav">
+          <button type="button" id="prev" aria-label="이전 장면">‹ 이전</button>
+          <span id="now-pos"></span>
+          <button type="button" id="next" aria-label="다음 장면">다음 ›</button>
+          <a id="open-yt" target="_blank" rel="noopener">YouTube ↗</a>
+        </div>
+      </div>
+    </aside>
+
+    <main class="results" id="results">
+      <section class="empty" id="empty">
+        <p id="stats-line"></p>
+        <p>이런 말씀을 찾아보세요:</p>
+        <div class="chips">
+          <button type="button" data-q="호흡">호흡</button>
+          <button type="button" data-q="에고">에고</button>
+          <button type="button" data-q="참나">참나</button>
+          <button type="button" data-q="깨어 있음">깨어 있음</button>
+          <button type="button" data-q="탐진치">탐진치</button>
+          <button type="button" data-q="바디 스캔">바디 스캔</button>
+        </div>
+      </section>
+      <ol class="hits" id="hits"></ol>
+      <button type="button" class="more" id="more" hidden>더 보기</button>
+    </main>
+  </div>
+</div>
+
+<footer class="wrap foot">
+  <p>자막은 YouTube 자동 생성 자막을 기반으로 하여 일부 표현이 부정확할 수 있습니다. <span id="updated"></span></p>
+</footer>
+
+<script type="module" src="app.js"></script>
+</body>
+</html>
