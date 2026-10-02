@@ -4,7 +4,7 @@
 param([int]$Limit = 0)
 $ErrorActionPreference = "Stop"
 Set-Location $PSScriptRoot
-$py = ".\.venv\Scripts\python.exe"
+$py = Join-Path $PSScriptRoot ".venv\Scripts\python.exe"  # absolute: steps below run from ingest\
 if (-not (Test-Path $py)) {
     python -m venv .venv
     & $py -m pip install -q -r requirements.txt

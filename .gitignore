@@ -4,3 +4,4 @@ __pycache__/
 # Generated; rebuilt by update.ps1
 site/pagefind/
 data/crawl.log
+logs/

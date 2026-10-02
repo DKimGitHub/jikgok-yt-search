@@ -32196,9 +32196,10 @@
   "at": "2026-09-28T20:48:06"
  },
  "CUGdPNi5byw": {
-  "status": "error",
-  "error": "ERROR: [youtube] CUGdPNi5byw: Unable to download API page: HTTPSConnection(host='www.youtube.com', port=443): Failed to resolve 'www.youtube.com' ([Errno 11001] getaddrinfo failed) (caused by Transpor",
-  "tries": 1
+  "status": "done",
+  "source": "yt-dlp",
+  "tries": 2,
+  "at": "2026-10-02T15:14:33"
  },
  "bvkGN6mOBz0": {
   "status": "done",
@@ -32207,9 +32208,10 @@
   "at": "2026-09-29T00:53:56"
  },
  "rbZQj7bg3SI": {
-  "status": "error",
-  "error": "EOF occurred in violation of protocol (_ssl.c:2427)",
-  "tries": 1
+  "status": "done",
+  "source": "yt-dlp",
+  "tries": 2,
+  "at": "2026-10-02T15:14:39"
  },
  "ftnYxcpczCk": {
   "status": "done",
@@ -34718,5 +34720,161 @@
   "source": "yt-dlp",
   "tries": 1,
   "at": "2026-10-02T14:43:34"
+ },
+ "b8-Hn5Lvijc": {
+  "status": "done",
+  "source": "yt-dlp",
+  "tries": 1,
+  "at": "2026-10-02T15:12:07"
+ },
+ "89nAspRCIWg": {
+  "status": "done",
+  "source": "yt-dlp",
+  "tries": 1,
+  "at": "2026-10-02T15:12:13"
+ },
+ "xqOA3qSJ-Z4": {
+  "status": "done",
+  "source": "yt-dlp",
+  "tries": 1,
+  "at": "2026-10-02T15:12:20"
+ },
+ "ngZhahWCXTw": {
+  "status": "done",
+  "source": "yt-dlp",
+  "tries": 1,
+  "at": "2026-10-02T15:12:26"
+ },
+ "t2sMiJRfARc": {
+  "status": "none",
+  "source": null,
+  "tries": 1,
+  "at": "2026-10-02T15:12:31"
+ },
+ "bdcwFJPPZC0": {
+  "status": "done",
+  "source": "yt-dlp",
+  "tries": 1,
+  "at": "2026-10-02T15:12:37"
+ },
+ "dWlqiXomq4s": {
+  "status": "done",
+  "source": "yt-dlp",
+  "tries": 1,
+  "at": "2026-10-02T15:12:43"
+ },
+ "B1ck1Y_oPR0": {
+  "status": "done",
+  "source": "yt-dlp",
+  "tries": 1,
+  "at": "2026-10-02T15:12:48"
+ },
+ "rc7f05s-PE4": {
+  "status": "done",
+  "source": "yt-dlp",
+  "tries": 1,
+  "at": "2026-10-02T15:12:55"
+ },
+ "BnOIe0YVskg": {
+  "status": "done",
+  "source": "yt-dlp",
+  "tries": 1,
+  "at": "2026-10-02T15:13:00"
+ },
+ "SEi7OpRrUTQ": {
+  "status": "done",
+  "source": "yt-dlp",
+  "tries": 1,
+  "at": "2026-10-02T15:13:05"
+ },
+ "58VmFDST7Bc": {
+  "status": "none",
+  "source": null,
+  "tries": 1,
+  "at": "2026-10-02T15:13:10"
+ },
+ "FcNNkLNzkq0": {
+  "status": "done",
+  "source": "yt-dlp",
+  "tries": 1,
+  "at": "2026-10-02T15:13:17"
+ },
+ "R0FKBLOvfBg": {
+  "status": "done",
+  "source": "yt-dlp",
+  "tries": 1,
+  "at": "2026-10-02T15:13:24"
+ },
+ "YaK_G3fdxxA": {
+  "status": "none",
+  "source": null,
+  "tries": 1,
+  "at": "2026-10-02T15:13:29"
+ },
+ "N6DRpBdWWts": {
+  "status": "done",
+  "source": "yt-dlp",
+  "tries": 1,
+  "at": "2026-10-02T15:13:37"
+ },
+ "uhns67KjZPs": {
+  "status": "done",
+  "source": "yt-dlp",
+  "tries": 1,
+  "at": "2026-10-02T15:13:42"
+ },
+ "_bKAE12jZ5s": {
+  "status": "done",
+  "source": "yt-dlp",
+  "tries": 1,
+  "at": "2026-10-02T15:13:48"
+ },
+ "aD8gQdLhhSk": {
+  "status": "none",
+  "source": null,
+  "tries": 1,
+  "at": "2026-10-02T15:13:54"
+ },
+ "DiIoCdYFDkI": {
+  "status": "done",
+  "source": "yt-dlp",
+  "tries": 1,
+  "at": "2026-10-02T15:14:00"
+ },
+ "E84cvCyu_vs": {
+  "status": "members",
+  "source": null,
+  "tries": 1,
+  "at": "2026-10-02T15:14:04"
+ },
+ "7SY6-_X8GV4": {
+  "status": "none",
+  "source": null,
+  "tries": 1,
+  "at": "2026-10-02T15:14:08"
+ },
+ "pojI23B2_Uw": {
+  "status": "done",
+  "source": "yt-dlp",
+  "tries": 1,
+  "at": "2026-10-02T15:14:13"
+ },
+ "TdXpQ4tw8m4": {
+  "status": "done",
+  "source": "yt-dlp",
+  "tries": 1,
+  "at": "2026-10-02T15:14:18"
+ },
+ "QHl0s_-hIbM": {
+  "status": "done",
+  "source": "yt-dlp",
+  "tries": 1,
+  "at": "2026-10-02T15:14:24"
+ },
+ "AL1rGR_tmw8": {
+  "status": "members",
+  "source": null,
+  "tries": 1,
+  "at": "2026-10-02T15:14:28"
  }
 }
