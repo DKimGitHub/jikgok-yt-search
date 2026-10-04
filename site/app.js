@@ -179,6 +179,7 @@ async function search() {
 async function showResults(list, q, seq, what) {
   results = list;
   shown = 0;
+  el.more.hidden = true; // no auto-load until the first page is in
   el.empty.hidden = true;
   el.hits.replaceChildren();
   el.count.textContent = results.length
@@ -250,9 +251,9 @@ async function renderMore(seq = searchSeq) {
     return;
   }
   const batch = results.slice(shown, shown + PAGE_SIZE);
+  shown += batch.length; // claim the batch before awaiting so overlapping calls can't repeat it
   const data = await Promise.all(batch.map((r) => r.data()));
   if (seq !== searchSeq) return;
-  shown += batch.length;
   for (const d of data) el.hits.append(card(d));
   el.more.hidden = shown >= results.length;
 }
@@ -391,7 +392,28 @@ el.q.addEventListener("input", search);
 document.querySelectorAll(".scope button").forEach((b) =>
   b.addEventListener("click", () => { if (b.dataset.scope !== scope) setScope(b.dataset.scope); el.q.focus(); }));
 for (const s of [el.type, el.year, el.sort]) s.addEventListener("change", search);
-el.more.addEventListener("click", () => renderMore());
+// Infinite scroll: load the next page as the end of the list approaches.
+// The 더 보기 button stays as a fallback (and shows progress while loading).
+let loadingMore = false;
+async function loadMore() {
+  if (loadingMore || el.more.hidden) return;
+  loadingMore = true;
+  el.more.textContent = "불러오는 중…";
+  try {
+    await renderMore();
+  } finally {
+    loadingMore = false;
+    el.more.textContent = "더 보기";
+  }
+  // The observer only fires on changes; if the end is still in view
+  // (short pages, tall screens), keep filling.
+  if (!el.more.hidden && el.more.getBoundingClientRect().top < innerHeight + 600) loadMore();
+}
+el.more.addEventListener("click", loadMore);
+if ("IntersectionObserver" in window) {
+  new IntersectionObserver((entries) => { if (entries.some((e) => e.isIntersecting)) loadMore(); },
+    { rootMargin: "0px 0px 600px 0px" }).observe(el.more);
+}
 el.prev.addEventListener("click", () => goTo(now.idx - 1));
 el.next.addEventListener("click", () => goTo(now.idx + 1));
 document.querySelectorAll(".chips button").forEach((b) =>
