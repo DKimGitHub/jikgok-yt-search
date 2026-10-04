@@ -70,7 +70,7 @@ async function init() {
   el.year.value = p.get("year") || "";
   el.sort.value = p.get("sort") || "";
   if (p.get("v")) playDirect(p.get("v"), Number(p.get("t") || 0));
-  if (el.q.value || el.type.value || el.year.value) search();
+  search();
 }
 
 function fillFilters() {
@@ -157,15 +157,7 @@ async function search() {
   const seq = ++searchSeq;
   const q = el.q.value.trim();
   syncUrl();
-  if (!q) {
-    if (el.type.value || el.year.value) return browse(seq);
-    results = [];
-    el.hits.replaceChildren();
-    el.more.hidden = true;
-    el.count.textContent = "";
-    el.empty.hidden = false;
-    return;
-  }
+  if (!q) return browse(seq);
   if (scope === "title") return titleSearch(q, seq);
 
   const filters = {};
@@ -179,7 +171,7 @@ async function search() {
 }
 
 async function browse(seq) {
-  // A filter with an empty search box lists that category's videos:
+  // An empty search box lists the channel's videos (narrowed by any filter):
   // newest first (관련도 has no meaning without a query), or oldest with 오래된순.
   // 내용 mode lists videos with a transcript, matching the filter's counts.
   await loadTitles();
@@ -191,6 +183,7 @@ async function browse(seq) {
   if (el.sort.value === "old") rows.sort((a, b) => (a.date || "9").localeCompare(b.date || "9"));
   else rows.sort((a, b) => (b.date || "").localeCompare(a.date || ""));
   await showResults(rows, "", seq, "목록");
+  el.empty.hidden = false; // keep the suggested searches above the list
 }
 
 async function showResults(list, q, seq, what) {
