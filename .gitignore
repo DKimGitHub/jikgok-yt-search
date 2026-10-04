@@ -5,3 +5,4 @@ __pycache__/
 site/pagefind/
 data/crawl.log
 logs/
+.claude/

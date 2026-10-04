@@ -1,4 +1,4 @@
-// 말씀 검색: Pagefind over per-video transcript pages + YouTube IFrame player.
+// 내용 검색: Pagefind over per-video transcript pages + YouTube IFrame player.
 const $ = (s) => document.querySelector(s);
 const el = {
   q: $("#q"), type: $("#f-type"), year: $("#f-year"), sort: $("#f-sort"),
@@ -10,6 +10,9 @@ const PAGE_SIZE = 10;
 const MOMENTS_SHOWN = 3;
 
 let pagefind;
+let scope = "text"; // "text" = 내용 (transcripts, Pagefind) | "title" = 제목 (titles.json)
+let titles = null;   // lazily loaded rows: {vid, title, date, duration, type, page, key}
+const filterCounts = { text: null, title: null };
 let results = [];
 let shown = 0;
 let searchSeq = 0;
@@ -29,6 +32,9 @@ const secondsFromUrl = (url) => {
   return m ? Number(m[1]) : null;
 };
 const LIVE = "라이브 · ";
+const yearOf = (date) => (date ? date.slice(0, 4) : "unknown");
+const squash = (s) => s.toLowerCase().replace(/\s+/g, "");
+const escapeHtml = (s) => s.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 const h = (tag, attrs = {}, ...kids) => {
   const n = document.createElement(tag);
   for (const [k, v] of Object.entries(attrs)) {
@@ -53,17 +59,54 @@ async function init() {
   pagefind.init();
 
   loadStats();
-  const filters = await pagefind.filters();
-  fillTypes(filters.type || {});
-  fillSelect(el.year, filters.year, (y) => (y === "unknown" ? "미상" : y + "년"), (a, b) => b.localeCompare(a));
+  filterCounts.text = await pagefind.filters();
 
   const p = new URLSearchParams(location.search);
+  if (p.get("in") === "title") await setScope("title", false);
+  else fillFilters();
   el.q.value = p.get("q") || "";
   el.type.value = p.get("type") || "";
   el.year.value = p.get("year") || "";
   el.sort.value = p.get("sort") || "";
   if (p.get("v")) playDirect(p.get("v"), Number(p.get("t") || 0));
   if (el.q.value) search();
+}
+
+function fillFilters() {
+  // Option counts differ per scope (title search also covers caption-less videos).
+  const c = filterCounts[scope] || { type: {}, year: {} };
+  const keep = [el.type.value, el.year.value];
+  for (const s of [el.type, el.year]) s.replaceChildren(h("option", { value: "" }, "전체"));
+  fillTypes(c.type || {});
+  fillSelect(el.year, c.year, (y) => (y === "unknown" ? "미상" : y + "년"), (a, b) => b.localeCompare(a));
+  el.type.value = keep[0];
+  el.year.value = keep[1];
+  // A filter value that doesn't exist in this scope falls back to "전체".
+  if (el.type.selectedIndex < 0) el.type.value = "";
+  if (el.year.selectedIndex < 0) el.year.value = "";
+}
+
+async function loadTitles() {
+  if (titles) return;
+  const rows = await (await fetch("titles.json")).json();
+  titles = rows.map(([vid, title, date, duration, type, page]) =>
+    ({ vid, title, date, duration, type, page: !!page, key: squash(title) }));
+  const type = {}, year = {};
+  for (const t of titles) {
+    type[t.type] = (type[t.type] || 0) + 1;
+    year[yearOf(t.date)] = (year[yearOf(t.date)] || 0) + 1;
+  }
+  filterCounts.title = { type, year };
+}
+
+async function setScope(next, rerun = true) {
+  scope = next;
+  document.querySelectorAll(".scope button").forEach((b) =>
+    b.setAttribute("aria-checked", String(b.dataset.scope === scope)));
+  el.q.placeholder = scope === "title" ? "제목 검색" : "내용 검색";
+  if (scope === "title") await loadTitles();
+  fillFilters();
+  if (rerun) search();
 }
 
 function fillSelect(select, counts = {}, label, order) {
@@ -90,7 +133,8 @@ async function loadStats() {
   try {
     const s = await (await fetch("stats.json")).json();
     $("#stats-line").textContent =
-      `영상 ${s.videos.toLocaleString("ko-KR")}편, 약 ${s.hours.toLocaleString("ko-KR")}시간 분량의 말씀을 검색할 수 있습니다.`;
+      `영상 ${s.videos.toLocaleString("ko-KR")}편, 약 ${s.hours.toLocaleString("ko-KR")}시간 분량의 내용` +
+      (s.titles ? `과 영상 ${s.titles.toLocaleString("ko-KR")}편의 제목을 검색할 수 있습니다.` : `을 검색할 수 있습니다.`);
     $("#updated").textContent = `마지막 업데이트: ${s.updated}`;
   } catch { /* stats are optional */ }
 }
@@ -98,6 +142,7 @@ async function loadStats() {
 function syncUrl() {
   const p = new URLSearchParams();
   if (el.q.value.trim()) p.set("q", el.q.value.trim());
+  if (scope === "title") p.set("in", "title");
   if (el.type.value) p.set("type", el.type.value);
   if (el.year.value) p.set("year", el.year.value);
   if (el.sort.value) p.set("sort", el.sort.value);
@@ -118,6 +163,8 @@ async function search() {
     el.empty.hidden = false;
     return;
   }
+  if (scope === "title") return titleSearch(q, seq);
+
   const filters = {};
   if (el.type.value) filters.type = el.type.value;
   if (el.year.value) filters.year = el.year.value;
@@ -125,7 +172,11 @@ async function search() {
 
   const res = await pagefind.debouncedSearch(q, { filters, sort }, 200);
   if (res === null || seq !== searchSeq) return; // superseded by newer typing
-  results = res.results;
+  await showResults(res.results, q, seq, "내용");
+}
+
+async function showResults(list, q, seq, what) {
+  results = list;
   shown = 0;
   el.empty.hidden = true;
   el.hits.replaceChildren();
@@ -133,14 +184,70 @@ async function search() {
     ? `${results.length.toLocaleString("ko-KR")}개 영상에서 찾았습니다`
     : "";
   if (!results.length) {
+    const target = what === "제목" ? "제목" : "내용";
     el.hits.append(h("li", { class: "none" },
-      h("p", {}, `‘${q}’에 대한 말씀을 찾지 못했습니다.`),
-      h("p", { class: "sub" }, "다른 표현이나 더 짧은 단어로 검색해 보세요. 필터가 켜져 있다면 해제해 보세요.")));
+      h("p", {}, `‘${q}’에 해당하는 ${target}을 찾지 못했습니다.`),
+      h("p", { class: "sub" }, what === "제목"
+        ? "내용 검색으로 바꾸면 영상 속에서 한 말까지 찾아봅니다."
+        : "다른 표현이나 더 짧은 단어로 검색해 보세요. 필터가 켜져 있다면 해제해 보세요.")));
   }
   await renderMore(seq);
 }
 
+function titleSearch(q, seq) {
+  // Every whitespace-separated term must appear in the title (spaces ignored,
+  // so "깨어있음" also finds "깨어 있음").
+  const terms = q.split(/\s+/).map(squash).filter(Boolean);
+  let rows = titles.filter((t) =>
+    terms.every((w) => t.key.includes(w))
+    && (!el.type.value || t.type === el.type.value)
+    && (!el.year.value || yearOf(t.date) === el.year.value));
+  const byDate = (a, b) => (b.date || "").localeCompare(a.date || "");
+  if (el.sort.value === "old") rows.sort((a, b) => (a.date || "9").localeCompare(b.date || "9"));
+  else if (el.sort.value === "new") rows.sort(byDate);
+  else {
+    // 관련도: whole query as typed, then match after the [시리즈] prefix, then newest.
+    const whole = squash(q);
+    const score = (t) => (t.key.includes(whole) ? 2 : 0) + (squash(t.title.replace(/^\s*\[[^\]]*\]/, "")).includes(terms[0]) ? 1 : 0);
+    rows = rows.map((t) => [score(t), t]).sort((a, b) => b[0] - a[0] || byDate(a[1], b[1])).map((x) => x[1]);
+  }
+  showResults(rows, q, seq, "제목");
+}
+
+function highlight(title, q) {
+  // Mark each typed term where it appears verbatim (case-insensitive).
+  let out = escapeHtml(title);
+  for (const w of q.split(/\s+/).filter(Boolean)) {
+    const re = new RegExp(escapeHtml(w).replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "gi");
+    out = out.replace(re, (m) => `<mark>${m}</mark>`);
+  }
+  return out;
+}
+
+function titleCard(t, q) {
+  const href = t.page ? `video/${t.vid}.html` : `https://www.youtube.com/watch?v=${t.vid}`;
+  return h("li", { class: "hit" },
+    h("button", {
+      type: "button", class: "thumb", "aria-label": `${t.title} 재생`,
+      onclick: () => play(t.vid, t.title, [], -1),
+    },
+      h("img", { src: `https://i.ytimg.com/vi/${t.vid}/mqdefault.jpg`, alt: "", loading: "lazy", width: 320, height: 180 }),
+      t.duration > 0 ? h("span", { class: "dur" }, fmtTime(t.duration)) : null),
+    h("div", { class: "body" },
+      h("h2", {}, h("a", { href, html: highlight(t.title, q), ...(t.page ? {} : { target: "_blank", rel: "noopener" }) })),
+      h("p", { class: "meta" }, typeBadge(t.type), t.date || "",
+        t.page ? null : h("span", { class: "no-captions" }, "· 자막 없음"))));
+}
+
 async function renderMore(seq = searchSeq) {
+  if (scope === "title") {
+    const q = el.q.value.trim();
+    const batch = results.slice(shown, shown + PAGE_SIZE);
+    shown += batch.length;
+    for (const t of batch) el.hits.append(titleCard(t, q));
+    el.more.hidden = shown >= results.length;
+    return;
+  }
   const batch = results.slice(shown, shown + PAGE_SIZE);
   const data = await Promise.all(batch.map((r) => r.data()));
   if (seq !== searchSeq) return;
@@ -278,6 +385,8 @@ async function playDirect(vid, t) {
 // ----------------------------------------------------------------- events
 
 el.q.addEventListener("input", search);
+document.querySelectorAll(".scope button").forEach((b) =>
+  b.addEventListener("click", () => { if (b.dataset.scope !== scope) setScope(b.dataset.scope); el.q.focus(); }));
 for (const s of [el.type, el.year, el.sort]) s.addEventListener("change", search);
 el.more.addEventListener("click", () => renderMore());
 el.prev.addEventListener("click", () => goTo(now.idx - 1));

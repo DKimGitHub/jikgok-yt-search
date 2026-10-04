@@ -3,29 +3,42 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>직곡의 명상수업 · 말씀 검색</title>
-<meta name="description" content="직곡의 명상수업 영상 속 말씀을 검색하고, 그 장면으로 바로 이동하세요.">
+<title>직곡의 명상수업 · 내용 검색</title>
+<meta name="description" content="직곡의 명상수업 영상 속 내용을 검색하고, 그 장면으로 바로 이동하세요.">
+<meta name="theme-color" content="#1f4037">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&family=Noto+Serif+KR:wght@500;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Nanum+Myeongjo:wght@700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
-<header class="masthead">
+<header class="hero">
   <div class="wrap">
-    <h1 id="site-title">직곡의 명상수업 · 말씀 검색</h1>
-    <p class="lede" id="lede">영상 속에서 하신 말씀을 찾아, 그 순간으로 바로 이동합니다.</p>
+    <div class="brand">
+      <span class="seal" aria-hidden="true">直曲</span>
+      <div>
+        <h1 id="site-title">직곡의 명상수업</h1>
+        <p class="lede" id="lede">영상 속 내용을 검색하고, 그 순간으로 바로 이동하세요.</p>
+      </div>
+    </div>
+
+    <div class="scope" role="radiogroup" aria-label="검색 범위">
+      <button type="button" role="radio" aria-checked="true" data-scope="text">내용</button>
+      <button type="button" role="radio" aria-checked="false" data-scope="title">제목</button>
+    </div>
+
+    <form class="searchbar" role="search" onsubmit="return false">
+      <label class="sr-only" for="q">내용 검색</label>
+      <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+      <input id="q" type="search" autocomplete="off" placeholder="내용 검색" autofocus>
+      <kbd class="hint" aria-hidden="true">/</kbd>
+    </form>
+    <p class="stats" id="stats-line"></p>
   </div>
 </header>
 
 <div class="wrap">
-  <form class="searchbar" role="search" onsubmit="return false">
-    <label class="sr-only" for="q">말씀 검색</label>
-    <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
-    <input id="q" type="search" autocomplete="off" placeholder="예: 호흡, 에고, 깨어 있음…" autofocus>
-    <kbd class="hint" aria-hidden="true">/</kbd>
-  </form>
-
   <div class="controls">
     <label>유형 <select id="f-type"><option value="">전체</option></select></label>
     <label>연도 <select id="f-year"><option value="">전체</option></select></label>
@@ -53,8 +66,7 @@
 
     <main class="results" id="results">
       <section class="empty" id="empty">
-        <p id="stats-line"></p>
-        <p>이런 말씀을 찾아보세요:</p>
+        <p class="empty-label">추천 검색어</p>
         <div class="chips">
           <button type="button" data-q="호흡">호흡</button>
           <button type="button" data-q="에고">에고</button>

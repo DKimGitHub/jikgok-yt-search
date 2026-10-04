@@ -1,4 +1,4 @@
-# 직곡의 명상수업 · 말씀 검색
+# 직곡의 명상수업 · 내용 검색
 
 A static website where viewers search **what is said inside** the channel's videos, then jump straight to that moment in an embedded player.
 

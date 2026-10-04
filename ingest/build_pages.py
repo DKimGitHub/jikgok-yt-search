@@ -6,6 +6,7 @@ Then run:  npx -y pagefind@1.3.0 --site site
 """
 import datetime as dt
 import html
+import json
 
 from chunk import chunk, fmt_time
 from common import SITE, STATE_FILE, TRANSCRIPTS, VIDEOS_FILE, load_config, load_json, save_json
@@ -16,6 +17,8 @@ PAGE = """<!doctype html>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{title_e}</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Nanum+Myeongjo:wght@800&display=swap">
 <link rel="stylesheet" href="../style.css">
 </head>
 <body class="transcript-page">
@@ -81,6 +84,15 @@ def main():
             written += 1
         seconds += v.get("duration") or 0
 
+    # Title search: every playable video, including those without captions.
+    # Compact rows: [id, title, date, duration, type, has_transcript_page]
+    titles = [[v["id"], v["title"], v.get("published") or "", v.get("duration") or 0,
+               v.get("type", "기타"), int(f"{v['id']}.html" in keep)]
+              for v in videos
+              if state.get(v["id"], {}).get("status") not in ("members", "unavailable")]
+    (SITE / "titles.json").write_text(
+        json.dumps(titles, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
+
     removed = 0
     for old in out_dir.glob("*.html"):
         if old.name not in keep:
@@ -88,7 +100,7 @@ def main():
             removed += 1
 
     save_json(SITE / "stats.json", {
-        "videos": len(keep), "channel_videos": len(videos),
+        "videos": len(keep), "titles": len(titles), "channel_videos": len(videos),
         "hours": round(seconds / 3600), "updated": dt.date.today().isoformat(),
         "title": cfg["site_title"], "channel": cfg["channel"]})
     print(f"{len(keep)} video pages ({written} written, {removed} removed). "

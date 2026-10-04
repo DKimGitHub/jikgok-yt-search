@@ -25,6 +25,7 @@ from common import STATE_FILE, TRANSCRIPTS, VIDEOS_FILE, load_config, load_json,
 
 # Final outcomes are not retried unless asked; "error" is retried automatically.
 FINAL = {"done", "none", "members", "unavailable"}
+RECHECK_DAYS = 30  # videos this new with no captions yet are re-checked each run
 
 
 class Blocked(Exception):
@@ -195,10 +196,16 @@ def main():
     state = load_json(STATE_FILE, {})
     retry = set(args.retry)
 
-    todo = [v for v in videos
-            if (not args.ids or v["id"] in args.ids)
-            and (state.get(v["id"], {}).get("status") not in FINAL
-                 or state[v["id"]]["status"] in retry)]
+    # YouTube generates ASR captions some time after upload (hours for long live
+    # streams), so a recent "none" may just mean "not yet": re-check those.
+    recent = (dt.date.today() - dt.timedelta(days=RECHECK_DAYS)).isoformat()
+
+    def due(v):
+        status = state.get(v["id"], {}).get("status")
+        return (status not in FINAL or status in retry
+                or (status == "none" and (v.get("published") or "") >= recent))
+
+    todo = [v for v in videos if (not args.ids or v["id"] in args.ids) and due(v)]
     if args.limit:
         todo = todo[:args.limit]
     print(f"{len(todo)} videos to process ({len(videos)} on channel)")
