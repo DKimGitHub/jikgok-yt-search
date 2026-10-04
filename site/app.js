@@ -14,6 +14,7 @@ let scope = "text"; // "text" = 내용 (transcripts, Pagefind) | "title" = 제�
 let titles = null;   // lazily loaded rows: {vid, title, date, duration, type, page, key}
 const filterCounts = { text: null, title: null };
 let results = [];
+let resultKind = "pagefind"; // "pagefind" (내용 hits) | "titles" (title rows: 제목 search or browsing)
 let shown = 0;
 let searchSeq = 0;
 // The video currently in the player, and the matched moments inside it.
@@ -69,7 +70,7 @@ async function init() {
   el.year.value = p.get("year") || "";
   el.sort.value = p.get("sort") || "";
   if (p.get("v")) playDirect(p.get("v"), Number(p.get("t") || 0));
-  if (el.q.value) search();
+  if (el.q.value || el.type.value || el.year.value) search();
 }
 
 function fillFilters() {
@@ -157,6 +158,7 @@ async function search() {
   const q = el.q.value.trim();
   syncUrl();
   if (!q) {
+    if (el.type.value || el.year.value) return browse(seq);
     results = [];
     el.hits.replaceChildren();
     el.more.hidden = true;
@@ -176,16 +178,34 @@ async function search() {
   await showResults(res.results, q, seq, "내용");
 }
 
+async function browse(seq) {
+  // A filter with an empty search box lists that category's videos:
+  // newest first (관련도 has no meaning without a query), or oldest with 오래된순.
+  // 내용 mode lists videos with a transcript, matching the filter's counts.
+  await loadTitles();
+  if (seq !== searchSeq) return;
+  const rows = titles.filter((t) =>
+    (scope === "title" || t.page)
+    && (!el.type.value || t.type === el.type.value)
+    && (!el.year.value || yearOf(t.date) === el.year.value));
+  if (el.sort.value === "old") rows.sort((a, b) => (a.date || "9").localeCompare(b.date || "9"));
+  else rows.sort((a, b) => (b.date || "").localeCompare(a.date || ""));
+  await showResults(rows, "", seq, "목록");
+}
+
 async function showResults(list, q, seq, what) {
   results = list;
+  resultKind = what === "내용" ? "pagefind" : "titles";
   shown = 0;
   el.more.hidden = true; // no auto-load until the first page is in
   el.empty.hidden = true;
   el.hits.replaceChildren();
-  el.count.textContent = results.length
-    ? `${results.length.toLocaleString("ko-KR")}개 영상에서 찾았습니다`
-    : "";
-  if (!results.length) {
+  el.count.textContent = !results.length ? ""
+    : what === "목록" ? `영상 ${results.length.toLocaleString("ko-KR")}편`
+    : `${results.length.toLocaleString("ko-KR")}개 영상에서 찾았습니다`;
+  if (!results.length && what === "목록") {
+    el.hits.append(h("li", { class: "none" }, h("p", {}, "이 조건에 해당하는 영상이 없습니다.")));
+  } else if (!results.length) {
     const target = what === "제목" ? "제목" : "내용";
     el.hits.append(h("li", { class: "none" },
       h("p", {}, `‘${q}’에 해당하는 ${target}을 찾지 못했습니다.`),
@@ -242,7 +262,7 @@ function titleCard(t, q) {
 }
 
 async function renderMore(seq = searchSeq) {
-  if (scope === "title") {
+  if (resultKind === "titles") {
     const q = el.q.value.trim();
     const batch = results.slice(shown, shown + PAGE_SIZE);
     shown += batch.length;
