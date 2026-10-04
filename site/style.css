@@ -408,4 +408,4 @@ mark {
   font: 600 12px/1.9 var(--mono); text-decoration: none;
 }
 .transcript-page section p { margin: 0; color: var(--ink-2); line-height: 1.8; }
-.transcript-page section:target { background: var(--accent-soft); }
+.transcript-page section:has(:target) { background: var(--accent-soft); }  /* the id is on the h2 */
