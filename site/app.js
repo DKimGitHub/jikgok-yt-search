@@ -76,7 +76,8 @@ function fillFilters() {
   // Option counts differ per scope (title search also covers caption-less videos).
   const c = filterCounts[scope] || { type: {}, year: {} };
   const keep = [el.type.value, el.year.value];
-  for (const s of [el.type, el.year]) s.replaceChildren(h("option", { value: "" }, "전체"));
+  el.type.replaceChildren(h("option", { value: "" }, "모든 유형"));
+  el.year.replaceChildren(h("option", { value: "" }, "모든 연도"));
   fillTypes(c.type || {});
   fillSelect(el.year, c.year, (y) => (y === "unknown" ? "미상" : y + "년"), (a, b) => b.localeCompare(a));
   el.type.value = keep[0];
@@ -359,6 +360,8 @@ function goTo(i, fromStart = false) {
   el.nowTitle.textContent = now.title;
   el.nowPos.textContent = now.moments.length && !fromStart
     ? `${fmtTime(m.t)} · 장면 ${i + 1}/${now.moments.length}` : "";
+  // No matched moments (title search): scene navigation has nothing to do.
+  el.prev.hidden = el.next.hidden = !now.moments.length;
   el.prev.disabled = fromStart || i <= 0;
   el.next.disabled = fromStart || i >= now.moments.length - 1;
   el.openYt.href = `https://www.youtube.com/watch?v=${now.vid}&t=${t}s`;
