@@ -92,7 +92,7 @@ async function loadTitles() {
   if (titles) return;
   const rows = await (await fetch("titles.json")).json();
   titles = rows.map(([vid, title, date, duration, type, page]) =>
-    ({ vid, title, date, duration, type, page: !!page, key: squash(title) }));
+    ({ vid, title, date, duration, type, page: page === 1, noCaptions: page === 0, key: squash(title) }));
   const type = {}, year = {};
   for (const t of titles) {
     type[t.type] = (type[t.type] || 0) + 1;
@@ -251,7 +251,7 @@ function titleCard(t, q) {
     h("div", { class: "body" },
       h("h2", {}, h("a", { href, html: highlight(t.title, q), ...(t.page ? {} : { target: "_blank", rel: "noopener" }) })),
       h("p", { class: "meta" }, typeBadge(t.type), t.date || "",
-        t.page ? null : h("span", { class: "no-captions" }, "· 자막 없음"))));
+        t.noCaptions ? h("span", { class: "no-captions" }, "· 자막 없음") : null)));
 }
 
 async function renderMore(seq = searchSeq) {
