@@ -2,7 +2,7 @@
 
 Each ~25 s segment becomes <h2 id="t-SECONDS">, which Pagefind turns into a
 sub-result, so every search hit carries the timestamp to jump to.
-Then run:  npx -y pagefind@1.3.0 --site site
+Then run build_search.py (GitHub Actions does this on every deploy).
 """
 import datetime as dt
 import html
@@ -104,7 +104,7 @@ def main():
         "hours": round(seconds / 3600), "updated": dt.date.today().isoformat(),
         "title": cfg["site_title"], "channel": cfg["channel"]})
     print(f"{len(keep)} video pages ({written} written, {removed} removed). "
-          f"Next: npx -y pagefind@1.3.0 --site site")
+          f"Next: build_search.py (runs in CI on deploy)")
 
 
 if __name__ == "__main__":
