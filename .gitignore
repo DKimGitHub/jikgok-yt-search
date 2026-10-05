@@ -6,3 +6,4 @@ site/pagefind/
 data/crawl.log
 logs/
 .claude/
+site/search/

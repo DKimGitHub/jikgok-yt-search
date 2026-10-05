@@ -5,11 +5,12 @@ A static website where viewers search **what is said inside** the channel's vide
 - Transcripts come only from **public** sources. No channel-owner login is needed.
 - The index uses only original Korean captions. Auto-translated tracks and misdetected-language ASR are ignored, and titles are fetched in Korean.
 - The 유형 filter has 3 live categories (수련문답 · 도담도담 · 특집·기타) plus video types taken from the `[직곡의 …]` title prefix.
-- The site is static (HTML + [Pagefind](https://pagefind.app)), so hosting is free and there's no server.
+- The site is static (HTML + a custom Ctrl-F search index), so hosting is free and there's no server.
+- **Search is literal, like Ctrl-F:** a video matches when the typed text appears in its title or in a ~25 s transcript segment. Spaces, punctuation and case are ignored ("참나각성" also finds "참나 각성"); results list every match, deterministically.
 
 ## Update the data
 
-Requires Python 3.10+ and Node 18+ (for `npx pagefind`).
+Requires Python 3.10+.
 
 ```powershell
 .\update.ps1              # everything still pending (resumable; Ctrl+C is safe)
@@ -23,9 +24,9 @@ Or run the steps individually from `ingest/`:
 | 1. Video list | `python fetch_videos.py` | `data/videos.json` (title, date, length, live/video type) |
 | 2. Transcripts | `python fetch_captions.py [--limit N] [--retry none]` | `data/transcripts/<id>.json`, `data/state.json` |
 | 3. Pages | `python build_pages.py` | `site/video/<id>.html`, `site/stats.json` |
-| 4. Search index | delete `site/pagefind/`, then `npx -y pagefind@1.3.0 --site site` (from the project root) | `site/pagefind/` |
+| 4. Search index | `python build_search.py` (GitHub Actions also runs this on every deploy) | `site/search/` (not committed) |
 
-> **Keep Pagefind pinned to 1.3.0.** Versions 1.4 and later decompose Hangul for diacritic matching and put every Korean word into one ~25 MB index file, which makes some searches take 15+ seconds. On 1.3.0 the largest file is about 0.4 MB.
+> **How the index works:** `site/search/` stores, for every pair of adjacent characters, which segments contain it and at which positions. A query downloads only the files for its character pairs and keeps segments where they line up consecutively, so results are exact. Pagefind was dropped because it split Korean compounds ("양덕과정" matched any video with 양덕 and 과정 anywhere) and missed spacing variants.
 
 ### Transcript sources and statuses
 `fetch_captions.py` tries **youtube-transcript-api** first, then **yt-dlp**. Each video's result is recorded in `data/state.json`:
@@ -49,7 +50,7 @@ Or run the steps individually from `ingest/`:
 - `min_count`: video types with fewer videos than this are merged into a group
 - `groups`: rules for merging small types into a group (a type goes into the group whose keywords its name contains, otherwise into `기타`)
 
-Re-run `fetch_videos.py` → `build_pages.py` → pagefind after changing these.
+Re-run `build_pages.py` after changing these, then push.
 
 ## Preview locally
 ```powershell
@@ -59,7 +60,7 @@ Open http://localhost:8765. (Opening the file directly with `file://` won't work
 
 ## Deploy (Cloudflare Pages)
 1. Run `npx wrangler pages deploy site --project-name jikgok-search`, or
-2. connect a Git repository in the Cloudflare dashboard with no build command and `site` as the output directory. In that case, commit `site/pagefind/` too, or add `npx -y pagefind@1.3.0 --site site` as the build command.
+2. connect a Git repository in the Cloudflare dashboard with `cd ingest && python build_search.py` as the build command and `site` as the output directory.
 
 GitHub Pages also works; publish the `site` folder as-is. All paths are relative.
 

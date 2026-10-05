@@ -1,4 +1,6 @@
-// 내용 검색: Pagefind over per-video transcript pages + YouTube IFrame player.
+// 내용 검색: Ctrl-F over transcript segments (search.js) + YouTube IFrame player.
+import { findSegments, loadSegments, loadText, markMatches, normalize } from "./search.js";
+
 const $ = (s) => document.querySelector(s);
 const el = {
   q: $("#q"), type: $("#f-type"), year: $("#f-year"), sort: $("#f-sort"),
@@ -9,12 +11,11 @@ const el = {
 const PAGE_SIZE = 10;
 const MOMENTS_SHOWN = 3;
 
-let pagefind;
-let scope = "text"; // "text" = 내용 (transcripts, Pagefind) | "title" = 제목 (titles.json)
+let scope = "text"; // "text" = 내용 (transcript Ctrl-F) | "title" = 제목 (titles.json)
 let titles = null;   // lazily loaded rows: {vid, title, date, duration, type, page, key}
 const filterCounts = { text: null, title: null };
 let results = [];
-let resultKind = "pagefind"; // "pagefind" (내용 hits) | "titles" (title rows: 제목 search or browsing)
+let resultKind = "content"; // "content" (내용 hits) | "titles" (title rows: 제목 search or browsing)
 let shown = 0;
 let searchSeq = 0;
 // The video currently in the player, and the matched moments inside it.
@@ -28,18 +29,13 @@ const fmtTime = (sec) => {
   const mm = h ? String(m).padStart(2, "0") : m;
   return (h ? h + ":" : "") + mm + ":" + String(s).padStart(2, "0");
 };
-const secondsFromUrl = (url) => {
-  const m = /#t-(\d+)/.exec(url || "");
-  return m ? Number(m[1]) : null;
-};
 const LIVE = "라이브 · ";
 const yearOf = (date) => (date ? date.slice(0, 4) : "unknown");
-const squash = (s) => s.toLowerCase().replace(/\s+/g, "");
 const escapeHtml = (s) => s.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 const h = (tag, attrs = {}, ...kids) => {
   const n = document.createElement(tag);
   for (const [k, v] of Object.entries(attrs)) {
-    if (k === "html") n.innerHTML = v; // only used for Pagefind excerpts (already escaped, <mark> added)
+    if (k === "html") n.innerHTML = v; // only for markMatches/escapeHtml output
     else if (k.startsWith("on")) n.addEventListener(k.slice(2), v);
     else if (v !== undefined && v !== null && v !== false) n.setAttribute(k, v);
   }
@@ -50,17 +46,8 @@ const h = (tag, attrs = {}, ...kids) => {
 // ----------------------------------------------------------------- search
 
 async function init() {
-  try {
-    pagefind = await import("./pagefind/pagefind.js");
-  } catch {
-    el.count.textContent = "검색 색인이 아직 없습니다 (pagefind 빌드 필요).";
-    return;
-  }
-  await pagefind.options({ excerptLength: 26 });
-  pagefind.init();
-
   loadStats();
-  filterCounts.text = await pagefind.filters();
+  await loadTitles();
 
   const p = new URLSearchParams(location.search);
   if (p.get("in") === "title") await setScope("title", false);
@@ -92,13 +79,16 @@ async function loadTitles() {
   if (titles) return;
   const rows = await (await fetch("titles.json")).json();
   titles = rows.map(([vid, title, date, duration, type, page]) =>
-    ({ vid, title, date, duration, type, page: page === 1, noCaptions: page === 0, key: squash(title) }));
-  const type = {}, year = {};
-  for (const t of titles) {
-    type[t.type] = (type[t.type] || 0) + 1;
-    year[yearOf(t.date)] = (year[yearOf(t.date)] || 0) + 1;
+    ({ vid, title, date, duration, type, page: page === 1, noCaptions: page === 0, key: normalize(title) }));
+  // 제목 counts every video; 내용 counts videos with a transcript.
+  for (const [name, rowsIn] of [["title", titles], ["text", titles.filter((t) => t.page)]]) {
+    const type = {}, year = {};
+    for (const t of rowsIn) {
+      type[t.type] = (type[t.type] || 0) + 1;
+      year[yearOf(t.date)] = (year[yearOf(t.date)] || 0) + 1;
+    }
+    filterCounts[name] = { type, year };
   }
-  filterCounts.title = { type, year };
 }
 
 async function setScope(next, rerun = true) {
@@ -159,15 +149,37 @@ async function search() {
   syncUrl();
   if (!q) return browse(seq);
   if (scope === "title") return titleSearch(q, seq);
+  return contentSearch(q, seq);
+}
 
-  const filters = {};
-  if (el.type.value) filters.type = el.type.value;
-  if (el.year.value) filters.year = el.year.value;
-  const sort = el.sort.value === "new" ? { date: "desc" } : el.sort.value === "old" ? { date: "asc" } : undefined;
+const passesFilters = (t) =>
+  (!el.type.value || t.type === el.type.value) && (!el.year.value || yearOf(t.date) === el.year.value);
+const newestFirst = (a, b) => (b.date || "").localeCompare(a.date || "");
+const oldestFirst = (a, b) => (a.date || "9").localeCompare(b.date || "9");
 
-  const res = await pagefind.debouncedSearch(q, { filters, sort }, 200);
-  if (res === null || seq !== searchSeq) return; // superseded by newer typing
-  await showResults(res.results, q, seq, "내용");
+async function contentSearch(q, seq) {
+  // Ctrl-F: a video matches when the query appears in its title or in one of its
+  // ~25 s segments (spaces/punctuation ignored). Every match is listed.
+  await new Promise((r) => setTimeout(r, 150)); // let fast typing settle
+  if (seq !== searchSeq) return;
+  const nq = normalize(q);
+  const [segs, table] = await Promise.all([findSegments(q), loadSegments()]);
+  if (seq !== searchSeq) return;
+  const byVid = new Map(titles.map((t) => [t.vid, t]));
+  const hits = new Map();
+  const entry = (t) => hits.get(t.vid) || hits.set(t.vid, { row: t, moments: [], titleHit: false }).get(t.vid);
+  for (const s of segs) {
+    const row = byVid.get(table.ids[table.video[s]]);
+    if (row) entry(row).moments.push(table.start[s]);
+  }
+  if (nq) for (const t of titles) if (t.key.includes(nq)) entry(t).titleHit = true;
+  const list = [...hits.values()].filter((e) => passesFilters(e.row));
+  if (el.sort.value === "old") list.sort((a, b) => oldestFirst(a.row, b.row));
+  else if (el.sort.value === "new") list.sort((a, b) => newestFirst(a.row, b.row));
+  // 관련도: title matches first, then most mentions, then newest.
+  else list.sort((a, b) => (b.titleHit - a.titleHit) || (b.moments.length - a.moments.length) || newestFirst(a.row, b.row));
+  const mentions = list.reduce((n, e) => n + e.moments.length, 0);
+  await showResults(list, q, seq, "내용", mentions);
 }
 
 async function browse(seq) {
@@ -176,25 +188,22 @@ async function browse(seq) {
   // 내용 mode lists videos with a transcript, matching the filter's counts.
   await loadTitles();
   if (seq !== searchSeq) return;
-  const rows = titles.filter((t) =>
-    (scope === "title" || t.page)
-    && (!el.type.value || t.type === el.type.value)
-    && (!el.year.value || yearOf(t.date) === el.year.value));
-  if (el.sort.value === "old") rows.sort((a, b) => (a.date || "9").localeCompare(b.date || "9"));
-  else rows.sort((a, b) => (b.date || "").localeCompare(a.date || ""));
+  const rows = titles.filter((t) => (scope === "title" || t.page) && passesFilters(t));
+  rows.sort(el.sort.value === "old" ? oldestFirst : newestFirst);
   await showResults(rows, "", seq, "목록");
   el.empty.hidden = false; // keep the suggested searches above the list
 }
 
-async function showResults(list, q, seq, what) {
+async function showResults(list, q, seq, what, mentions = 0) {
   results = list;
-  resultKind = what === "내용" ? "pagefind" : "titles";
+  resultKind = what === "내용" ? "content" : "titles";
   shown = 0;
   el.more.hidden = true; // no auto-load until the first page is in
   el.empty.hidden = true;
   el.hits.replaceChildren();
   el.count.textContent = !results.length ? ""
     : what === "목록" ? `영상 ${results.length.toLocaleString("ko-KR")}편`
+    : what === "내용" && mentions ? `${results.length.toLocaleString("ko-KR")}개 영상 · ${mentions.toLocaleString("ko-KR")}곳`
     : `${results.length.toLocaleString("ko-KR")}개 영상에서 찾았습니다`;
   if (!results.length && what === "목록") {
     el.hits.append(h("li", { class: "none" }, h("p", {}, "이 조건에 해당하는 영상이 없습니다.")));
@@ -210,34 +219,15 @@ async function showResults(list, q, seq, what) {
 }
 
 function titleSearch(q, seq) {
-  // Every whitespace-separated term must appear in the title (spaces ignored,
-  // so "깨어있음" also finds "깨어 있음").
-  const terms = q.split(/\s+/).map(squash).filter(Boolean);
-  let rows = titles.filter((t) =>
-    terms.every((w) => t.key.includes(w))
-    && (!el.type.value || t.type === el.type.value)
-    && (!el.year.value || yearOf(t.date) === el.year.value));
-  const byDate = (a, b) => (b.date || "").localeCompare(a.date || "");
-  if (el.sort.value === "old") rows.sort((a, b) => (a.date || "9").localeCompare(b.date || "9"));
-  else if (el.sort.value === "new") rows.sort(byDate);
-  else {
-    // 관련도: whole query as typed, then match after the [시리즈] prefix, then newest.
-    const whole = squash(q);
-    const score = (t) => (t.key.includes(whole) ? 2 : 0) + (squash(t.title.replace(/^\s*\[[^\]]*\]/, "")).includes(terms[0]) ? 1 : 0);
-    rows = rows.map((t) => [score(t), t]).sort((a, b) => b[0] - a[0] || byDate(a[1], b[1])).map((x) => x[1]);
-  }
+  // Ctrl-F on titles: the query must appear as typed (spaces/punctuation ignored).
+  // Newest first unless 오래된순.
+  const nq = normalize(q);
+  const rows = titles.filter((t) => nq && t.key.includes(nq) && passesFilters(t));
+  rows.sort(el.sort.value === "old" ? oldestFirst : newestFirst);
   showResults(rows, q, seq, "제목");
 }
 
-function highlight(title, q) {
-  // Mark each typed term where it appears verbatim (case-insensitive).
-  let out = escapeHtml(title);
-  for (const w of q.split(/\s+/).filter(Boolean)) {
-    const re = new RegExp(escapeHtml(w).replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "gi");
-    out = out.replace(re, (m) => `<mark>${m}</mark>`);
-  }
-  return out;
-}
+const highlight = (title, q) => markMatches(title, normalize(q), escapeHtml);
 
 function titleCard(t, q) {
   const href = t.page ? `video/${t.vid}.html` : `https://www.youtube.com/watch?v=${t.vid}`;
@@ -265,24 +255,11 @@ async function renderMore(seq = searchSeq) {
   }
   const batch = results.slice(shown, shown + PAGE_SIZE);
   shown += batch.length; // claim the batch before awaiting so overlapping calls can't repeat it
-  const data = await Promise.all(batch.map((r) => r.data()));
+  const texts = await Promise.all(batch.map((e) => (e.moments.length ? loadText(e.row.vid) : null)));
   if (seq !== searchSeq) return;
-  for (const d of data) el.hits.append(card(d));
+  const nq = normalize(el.q.value);
+  batch.forEach((e, i) => el.hits.append(contentCard(e, texts[i], nq)));
   el.more.hidden = shown >= results.length;
-}
-
-function momentsOf(d) {
-  // One sub-result per ~25 s transcript segment (<h2 id="t-SECONDS">).
-  const subs = (d.sub_results || [])
-    .map((s) => ({
-      t: secondsFromUrl(s.url),
-      excerpt: s.excerpt.replace(/^(\d+:)?\d+:\d+\.\s*/, ""), // drop the heading's "1:23." prefix
-      weight: s.locations?.length || 0,
-    }))
-    .filter((s) => s.t !== null);
-  // Best matches first for the preview, but play them in time order.
-  const best = [...subs].sort((a, b) => b.weight - a.weight);
-  return { best, inOrder: [...subs].sort((a, b) => a.t - b.t) };
 }
 
 function typeBadge(type) {
@@ -291,37 +268,43 @@ function typeBadge(type) {
   return h("span", { class: live ? "badge live" : "badge" }, live ? "LIVE " + type.slice(LIVE.length) : type);
 }
 
-function card(d) {
-  const { vid, title, date, image, duration } = d.meta;
-  const { best, inOrder } = momentsOf(d);
-  const preview = best.slice(0, MOMENTS_SHOWN).sort((a, b) => a.t - b.t);
+function contentCard(e, texts, nq) {
+  const t = e.row;
+  const textAt = new Map(texts || []);
+  const inOrder = e.moments.map((sec) => ({ t: sec })); // segments are already in time order
+  const href = t.page ? `video/${t.vid}.html` : `https://www.youtube.com/watch?v=${t.vid}`;
 
   const moment = (m) => h("li", {},
     h("button", {
-      type: "button", class: "moment", "data-vid": vid, "data-t": m.t,
-      onclick: () => play(vid, title, inOrder, inOrder.findIndex((x) => x.t === m.t)),
-    }, h("span", { class: "ts" }, fmtTime(m.t)), h("span", { class: "ex", html: m.excerpt })));
+      type: "button", class: "moment", "data-vid": t.vid, "data-t": m.t,
+      onclick: () => play(t.vid, t.title, inOrder, inOrder.indexOf(m)),
+    }, h("span", { class: "ts" }, fmtTime(m.t)),
+       h("span", { class: "ex", html: markMatches(textAt.get(m.t) || "", nq, escapeHtml) })));
 
-  const list = h("ul", { class: "moments" }, ...preview.map(moment));
-  const rest = inOrder.filter((m) => !preview.includes(m));
-  const moreBtn = rest.length
+  const list = h("ul", { class: "moments" }, ...inOrder.slice(0, MOMENTS_SHOWN).map(moment));
+  const rest = inOrder.length - MOMENTS_SHOWN;
+  const moreBtn = rest > 0
     ? h("button", {
         type: "button", class: "more-moments",
-        onclick: (e) => { list.replaceChildren(...inOrder.map(moment)); e.currentTarget.remove(); markActive(); },
-      }, `이 영상의 다른 장면 ${rest.length}곳 더 보기`)
+        onclick: (ev) => { list.replaceChildren(...inOrder.map(moment)); ev.currentTarget.remove(); markActive(); },
+      }, `이 영상의 다른 장면 ${rest}곳 더 보기`)
     : null;
 
   return h("li", { class: "hit" },
     h("button", {
-      type: "button", class: "thumb", "aria-label": `${title} 재생`,
-      onclick: () => play(vid, title, inOrder, inOrder.length ? 0 : -1),
+      type: "button", class: "thumb", "aria-label": `${t.title} 재생`,
+      onclick: () => play(t.vid, t.title, inOrder, inOrder.length ? 0 : -1),
     },
-      h("img", { src: image, alt: "", loading: "lazy", width: 320, height: 180 }),
-      duration > 0 ? h("span", { class: "dur" }, fmtTime(duration)) : null),
+      h("img", { src: `https://i.ytimg.com/vi/${t.vid}/mqdefault.jpg`, alt: "", loading: "lazy", width: 320, height: 180 }),
+      t.duration > 0 ? h("span", { class: "dur" }, fmtTime(t.duration)) : null),
     h("div", { class: "body" },
-      h("h2", {}, h("a", { href: d.url }, title)),
-      h("p", { class: "meta" }, typeBadge(d.filters?.type?.[0]), date || ""),
-      preview.length ? list : h("p", { class: "ex" , html: d.excerpt }),
+      h("h2", {}, h("a", {
+        href, html: e.titleHit ? markMatches(t.title, nq, escapeHtml) : escapeHtml(t.title),
+        ...(t.page ? {} : { target: "_blank", rel: "noopener" }),
+      })),
+      h("p", { class: "meta" }, typeBadge(t.type), t.date || "",
+        e.moments.length ? h("span", {}, `· ${e.moments.length}곳`) : null),
+      inOrder.length ? list : null,
       moreBtn));
 }
 
