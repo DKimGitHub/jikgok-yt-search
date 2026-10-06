@@ -13,7 +13,9 @@ const MOMENTS_SHOWN = 3;
 
 let scope = "text"; // "text" = 내용 (transcript Ctrl-F) | "title" = 제목 (titles.json)
 let titles = null;   // lazily loaded rows: {vid, title, date, duration, type, page, key}
-const filterCounts = { text: null, title: null };
+// Current filter choices. The <select>s are rebuilt from each result set and mirror these.
+const filt = { type: "", year: "" };
+let typeOrder = {}; // channel-wide count per type: a stable option order
 let results = [];
 let resultKind = "content"; // "content" (내용 hits) | "titles" (title rows: 제목 search or browsing)
 let shown = 0;
@@ -51,28 +53,39 @@ async function init() {
 
   const p = new URLSearchParams(location.search);
   if (p.get("in") === "title") await setScope("title", false);
-  else fillFilters();
   el.q.value = p.get("q") || "";
-  el.type.value = p.get("type") || "";
-  el.year.value = p.get("year") || "";
+  filt.type = p.get("type") || "";
+  filt.year = p.get("year") || "";
   el.sort.value = p.get("sort") || "";
   if (p.get("v")) playDirect(p.get("v"), Number(p.get("t") || 0));
   search();
 }
 
-function fillFilters() {
-  // Option counts differ per scope (title search also covers caption-less videos).
-  const c = filterCounts[scope] || { type: {}, year: {} };
-  const keep = [el.type.value, el.year.value];
-  el.type.replaceChildren(h("option", { value: "" }, "모든 유형"));
-  el.year.replaceChildren(h("option", { value: "" }, "모든 연도"));
-  fillTypes(c.type || {});
-  fillSelect(el.year, c.year, (y) => (y === "unknown" ? "미상" : y + "년"), (a, b) => b.localeCompare(a));
-  el.type.value = keep[0];
-  el.year.value = keep[1];
-  // A filter value that doesn't exist in this scope falls back to "전체".
-  if (el.type.selectedIndex < 0) el.type.value = "";
-  if (el.year.selectedIndex < 0) el.year.value = "";
+const num = (n) => n.toLocaleString("ko-KR");
+
+/** Rebuild both filters from the current (unfiltered) results: each option counts
+ *  the results it would show given the *other* filter. */
+function updateFacets(rows) {
+  const type = {}, year = {};
+  for (const t of rows) {
+    const y = yearOf(t.date);
+    if (!filt.year || y === filt.year) type[t.type] = (type[t.type] || 0) + 1;
+    if (!filt.type || t.type === filt.type) year[y] = (year[y] || 0) + 1;
+  }
+  fillFilters(type, year);
+}
+
+function fillFilters(type, year) {
+  const total = (c) => Object.values(c).reduce((a, b) => a + b, 0);
+  // Zero-count options are hidden, except the current choice (shown as 0).
+  if (filt.type && !(filt.type in type)) type[filt.type] = 0;
+  if (filt.year && !(filt.year in year)) year[filt.year] = 0;
+  el.type.replaceChildren(h("option", { value: "" }, `모든 유형 (${num(total(type))})`));
+  el.year.replaceChildren(h("option", { value: "" }, `모든 연도 (${num(total(year))})`));
+  fillTypes(type);
+  fillSelect(el.year, year, (y) => (y === "unknown" ? "미상" : y + "년"), (a, b) => b.localeCompare(a));
+  el.type.value = filt.type;
+  el.year.value = filt.year;
 }
 
 async function loadTitles() {
@@ -80,15 +93,7 @@ async function loadTitles() {
   const rows = await (await fetch("titles.json")).json();
   titles = rows.map(([vid, title, date, duration, type, page]) =>
     ({ vid, title, date, duration, type, page: page === 1, noCaptions: page === 0, key: normalize(title) }));
-  // 제목 counts every video; 내용 counts videos with a transcript.
-  for (const [name, rowsIn] of [["title", titles], ["text", titles.filter((t) => t.page)]]) {
-    const type = {}, year = {};
-    for (const t of rowsIn) {
-      type[t.type] = (type[t.type] || 0) + 1;
-      year[yearOf(t.date)] = (year[yearOf(t.date)] || 0) + 1;
-    }
-    filterCounts[name] = { type, year };
-  }
+  for (const t of titles) typeOrder[t.type] = (typeOrder[t.type] || 0) + 1;
 }
 
 async function setScope(next, rerun = true) {
@@ -97,20 +102,20 @@ async function setScope(next, rerun = true) {
     b.setAttribute("aria-checked", String(b.dataset.scope === scope)));
   el.q.placeholder = scope === "title" ? "제목 검색" : "내용 검색";
   if (scope === "title") await loadTitles();
-  fillFilters();
   if (rerun) search();
 }
 
 function fillSelect(select, counts = {}, label, order) {
   for (const key of Object.keys(counts).sort(order)) {
-    select.append(h("option", { value: key }, `${label(key)} (${counts[key].toLocaleString("ko-KR")})`));
+    select.append(h("option", { value: key }, `${label(key)} (${num(counts[key])})`));
   }
 }
 
 function fillTypes(counts) {
-  // Live shows first, then video types by size; "기타" always last.
-  const n = (k) => counts[k].toLocaleString("ko-KR");
-  const bySize = (a, b) => (a === "기타") - (b === "기타") || counts[b] - counts[a];
+  // Live shows first, then video types by channel-wide size (stable while counts
+  // change with the search); "기타" always last.
+  const n = (k) => num(counts[k]);
+  const bySize = (a, b) => (a === "기타") - (b === "기타") || (typeOrder[b] || 0) - (typeOrder[a] || 0);
   const keys = Object.keys(counts);
   const live = h("optgroup", { label: "라이브" },
     ...keys.filter((k) => k.startsWith(LIVE)).sort(bySize)
@@ -135,8 +140,8 @@ function syncUrl() {
   const p = new URLSearchParams();
   if (el.q.value.trim()) p.set("q", el.q.value.trim());
   if (scope === "title") p.set("in", "title");
-  if (el.type.value) p.set("type", el.type.value);
-  if (el.year.value) p.set("year", el.year.value);
+  if (filt.type) p.set("type", filt.type);
+  if (filt.year) p.set("year", filt.year);
   if (el.sort.value) p.set("sort", el.sort.value);
   if (now.vid) p.set("v", now.vid);
   const qs = p.toString();
@@ -153,7 +158,7 @@ async function search() {
 }
 
 const passesFilters = (t) =>
-  (!el.type.value || t.type === el.type.value) && (!el.year.value || yearOf(t.date) === el.year.value);
+  (!filt.type || t.type === filt.type) && (!filt.year || yearOf(t.date) === filt.year);
 const newestFirst = (a, b) => (b.date || "").localeCompare(a.date || "");
 const oldestFirst = (a, b) => (a.date || "9").localeCompare(b.date || "9");
 
@@ -173,7 +178,9 @@ async function contentSearch(q, seq) {
     if (row) entry(row).moments.push(table.start[s]);
   }
   if (nq) for (const t of titles) if (t.key.includes(nq)) entry(t).titleHit = true;
-  const list = [...hits.values()].filter((e) => passesFilters(e.row));
+  const all = [...hits.values()];
+  updateFacets(all.map((e) => e.row));
+  const list = all.filter((e) => passesFilters(e.row));
   if (el.sort.value === "old") list.sort((a, b) => oldestFirst(a.row, b.row));
   else if (el.sort.value === "new") list.sort((a, b) => newestFirst(a.row, b.row));
   // 관련도: title matches first, then most mentions, then newest.
@@ -188,7 +195,9 @@ async function browse(seq) {
   // 내용 mode lists videos with a transcript, matching the filter's counts.
   await loadTitles();
   if (seq !== searchSeq) return;
-  const rows = titles.filter((t) => (scope === "title" || t.page) && passesFilters(t));
+  const base = titles.filter((t) => scope === "title" || t.page);
+  updateFacets(base);
+  const rows = base.filter(passesFilters);
   rows.sort(el.sort.value === "old" ? oldestFirst : newestFirst);
   await showResults(rows, "", seq, "목록");
   el.empty.hidden = false; // keep the suggested searches above the list
@@ -222,7 +231,9 @@ function titleSearch(q, seq) {
   // Ctrl-F on titles: the query must appear as typed (spaces/punctuation ignored).
   // Newest first unless 오래된순.
   const nq = normalize(q);
-  const rows = titles.filter((t) => nq && t.key.includes(nq) && passesFilters(t));
+  const base = titles.filter((t) => nq && t.key.includes(nq));
+  updateFacets(base);
+  const rows = base.filter(passesFilters);
   rows.sort(el.sort.value === "old" ? oldestFirst : newestFirst);
   showResults(rows, q, seq, "제목");
 }
@@ -387,7 +398,9 @@ async function playDirect(vid, t) {
 el.q.addEventListener("input", search);
 document.querySelectorAll(".scope button").forEach((b) =>
   b.addEventListener("click", () => { if (b.dataset.scope !== scope) setScope(b.dataset.scope); el.q.focus(); }));
-for (const s of [el.type, el.year, el.sort]) s.addEventListener("change", search);
+el.type.addEventListener("change", () => { filt.type = el.type.value; search(); });
+el.year.addEventListener("change", () => { filt.year = el.year.value; search(); });
+el.sort.addEventListener("change", search);
 // Infinite scroll: load the next page as the end of the list approaches.
 // The 더 보기 button stays as a fallback (and shows progress while loading).
 let loadingMore = false;
