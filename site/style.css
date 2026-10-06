@@ -396,3 +396,14 @@ mark {
 }
 .transcript-page section p { margin: 0; color: var(--ink-2); line-height: 1.8; }
 .transcript-page section:has(:target) { background: var(--accent-soft); }  /* the id is on the h2 */
+
+/* Transcript export: timestamp toggle + save/copy buttons */
+.transcript-page .meta { margin-bottom: 14px; }
+.export { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0 0 28px; font-size: 13px; }
+.export label { display: inline-flex; align-items: center; gap: 6px; color: var(--ink-2); margin-right: 4px; cursor: pointer; }
+.export input { accent-color: var(--accent); width: 15px; height: 15px; margin: 0; }
+.export button {
+  background: var(--surface); color: var(--accent); border: 1px solid var(--line);
+  border-radius: 999px; padding: 4px 14px; font-weight: 600; box-shadow: var(--shadow-sm);
+}
+.export button:hover { border-color: var(--accent); }

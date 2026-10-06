@@ -34,8 +34,14 @@ PAGE = """<!doctype html>
   <h1 data-pagefind-meta="title">{title_e}</h1>
   <p class="meta" data-pagefind-ignore>{date_label} · {duration_label} ·
     <a href="https://www.youtube.com/watch?v={vid}">YouTube에서 보기</a></p>
+  <div class="export" data-pagefind-ignore>
+    <label><input type="checkbox" id="ex-ts" checked> 타임스탬프 포함</label>
+    <button type="button" id="ex-download">텍스트 파일로 저장</button>
+    <button type="button" id="ex-copy">복사</button>
+  </div>
 {sections}
 </main>
+<script src="../transcript.js" defer></script>
 </body>
 </html>
 """
