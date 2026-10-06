@@ -6,13 +6,14 @@ const el = {
   q: $("#q"), type: $("#f-type"), year: $("#f-year"), sort: $("#f-sort"),
   count: $("#count"), hits: $("#hits"), more: $("#more"), empty: $("#empty"),
   panel: $("#panel"), nowTitle: $("#now-title"), nowPos: $("#now-pos"),
-  prev: $("#prev"), next: $("#next"), openYt: $("#open-yt"),
+  prev: $("#prev"), next: $("#next"), openYt: $("#open-yt"), openTr: $("#open-tr"),
 };
 const PAGE_SIZE = 10;
 const MOMENTS_SHOWN = 3;
 
 let scope = "text"; // "text" = 내용 (transcript Ctrl-F) | "title" = 제목 (titles.json)
-let titles = null;   // lazily loaded rows: {vid, title, date, duration, type, page, key}
+let titles = null;   // lazily loaded rows: {vid, title, date, duration, type, page, manual, key}
+let byVid = new Map();
 // Current filter choices. The <select>s are rebuilt from each result set and mirror these.
 const filt = { type: "", year: "" };
 let typeOrder = {}; // channel-wide count per type: a stable option order
@@ -91,8 +92,10 @@ function fillFilters(type, year) {
 async function loadTitles() {
   if (titles) return;
   const rows = await (await fetch("titles.json")).json();
-  titles = rows.map(([vid, title, date, duration, type, page]) =>
-    ({ vid, title, date, duration, type, page: page === 1, noCaptions: page === 0, key: normalize(title) }));
+  titles = rows.map(([vid, title, date, duration, type, page, manual]) =>
+    ({ vid, title, date, duration, type, page: page === 1, noCaptions: page === 0, manual: manual === 1,
+       key: normalize(title) }));
+  byVid = new Map(titles.map((t) => [t.vid, t]));
   for (const t of titles) typeOrder[t.type] = (typeOrder[t.type] || 0) + 1;
 }
 
@@ -136,7 +139,7 @@ async function loadStats() {
   } catch { /* stats are optional */ }
 }
 
-function syncUrl() {
+function syncUrl(t = null) {
   const p = new URLSearchParams();
   if (el.q.value.trim()) p.set("q", el.q.value.trim());
   if (scope === "title") p.set("in", "title");
@@ -144,6 +147,7 @@ function syncUrl() {
   if (filt.year) p.set("year", filt.year);
   if (el.sort.value) p.set("sort", el.sort.value);
   if (now.vid) p.set("v", now.vid);
+  if (now.vid && t !== null) p.set("t", String(t));
   const qs = p.toString();
   history.replaceState(null, "", qs ? "?" + qs : location.pathname);
 }
@@ -170,7 +174,6 @@ async function contentSearch(q, seq) {
   const nq = normalize(q);
   const [segs, table] = await Promise.all([findSegments(q), loadSegments()]);
   if (seq !== searchSeq) return;
-  const byVid = new Map(titles.map((t) => [t.vid, t]));
   const hits = new Map();
   const entry = (t) => hits.get(t.vid) || hits.set(t.vid, { row: t, moments: [], titleHit: false }).get(t.vid);
   for (const s of segs) {
@@ -179,6 +182,15 @@ async function contentSearch(q, seq) {
   }
   if (nq) for (const t of titles) if (t.key.includes(nq)) entry(t).titleHit = true;
   const all = [...hits.values()];
+  // Returning from a transcript page with a video open: give the panel this
+  // search's moments for it, positioned at the restored time, without re-seeking.
+  if (restore && restore.vid === now.vid && hits.has(now.vid)) {
+    now.moments = hits.get(now.vid).moments.map((sec) => ({ t: sec }));
+    const idx = now.moments.findLastIndex((m) => m.t <= restore.t + 1);
+    now.idx = Math.max(idx, 0);
+    showNav(idx < 0, restore.t);
+  }
+  restore = null;
   updateFacets(all.map((e) => e.row));
   const list = all.filter((e) => passesFilters(e.row));
   if (el.sort.value === "old") list.sort((a, b) => oldestFirst(a.row, b.row));
@@ -251,7 +263,7 @@ function titleCard(t, q) {
       t.duration > 0 ? h("span", { class: "dur" }, fmtTime(t.duration)) : null),
     h("div", { class: "body" },
       h("h2", {}, h("a", { href, html: highlight(t.title, q), ...(t.page ? {} : { target: "_blank", rel: "noopener" }) })),
-      h("p", { class: "meta" }, typeBadge(t.type), t.date || "",
+      h("p", { class: "meta" }, typeBadge(t.type), ccBadge(t), t.date || "",
         t.noCaptions ? h("span", { class: "no-captions" }, "· 자막 없음") : null)));
 }
 
@@ -270,8 +282,12 @@ async function renderMore(seq = searchSeq) {
   if (seq !== searchSeq) return;
   const nq = normalize(el.q.value);
   batch.forEach((e, i) => el.hits.append(contentCard(e, texts[i], nq)));
+  if (el.nowPos.textContent) markActive(); // the playing moment may be in this batch
   el.more.hidden = shown >= results.length;
 }
+
+// Captions written by a person (not YouTube's speech recognition).
+const ccBadge = (t) => (t.manual ? h("span", { class: "badge cc", title: "사람이 직접 만든 자막" }, "수동 자막") : null);
 
 function typeBadge(type) {
   if (!type) return null;
@@ -313,7 +329,7 @@ function contentCard(e, texts, nq) {
         href, html: e.titleHit ? markMatches(t.title, nq, escapeHtml) : escapeHtml(t.title),
         ...(t.page ? {} : { target: "_blank", rel: "noopener" }),
       })),
-      h("p", { class: "meta" }, typeBadge(t.type), t.date || "",
+      h("p", { class: "meta" }, typeBadge(t.type), ccBadge(t), t.date || "",
         e.moments.length ? h("span", {}, `· ${e.moments.length}곳`) : null),
       inOrder.length ? list : null,
       moreBtn));
@@ -365,6 +381,12 @@ function goTo(i, fromStart = false) {
   const m = now.moments[i];
   const t = fromStart || !m ? 0 : Math.max(0, m.t - 1);
   seek(now.vid, t);
+  showNav(fromStart, t);
+}
+
+/** Panel text and buttons for now.idx (no seeking). */
+function showNav(fromStart, t) {
+  const i = now.idx, m = now.moments[i];
   el.nowTitle.textContent = now.title;
   el.nowPos.textContent = now.moments.length && !fromStart
     ? `${fmtTime(m.t)} · 장면 ${i + 1}/${now.moments.length}` : "";
@@ -373,6 +395,8 @@ function goTo(i, fromStart = false) {
   el.prev.disabled = fromStart || i <= 0;
   el.next.disabled = fromStart || i >= now.moments.length - 1;
   el.openYt.href = `https://www.youtube.com/watch?v=${now.vid}&t=${t}s`;
+  el.openTr.hidden = !byVid.get(now.vid)?.page;
+  el.openTr.href = `video/${now.vid}.html`;
   markActive(fromStart ? null : m?.t);
 }
 
@@ -383,15 +407,22 @@ function markActive(t = now.moments[now.idx]?.t) {
   b?.classList.add("active");
 }
 
-async function playDirect(vid, t) {
-  // Deep link from a transcript page (?v=ID&t=SEC): look up the title from its page.
-  let title = "";
-  try {
-    const doc = new DOMParser().parseFromString(await (await fetch(`video/${vid}.html`)).text(), "text/html");
-    title = doc.querySelector("h1")?.textContent || "";
-  } catch { /* title is cosmetic */ }
-  play(vid, title, t ? [{ t: t + 1 }] : [], t ? 0 : -1);
+// Deep link (?v=ID&t=SEC), e.g. back from a transcript page: reopen the video at t.
+let restore = null;
+function playDirect(vid, t) {
+  restore = { vid, t };
+  play(vid, byVid.get(vid)?.title || "", t ? [{ t: t + 1 }] : [], t ? 0 : -1);
 }
+
+// 자막 보기: open the transcript at the moment playing now. The transcript page's
+// back link and timestamps return here with the same search, filters and video.
+el.openTr.addEventListener("click", (e) => {
+  if (e.ctrlKey || e.metaKey || e.shiftKey || e.button) return; // new tab: plain link
+  e.preventDefault();
+  const t = Math.floor(player?.getCurrentTime?.() ?? now.moments[now.idx]?.t ?? 0);
+  syncUrl(t);
+  location.href = `video/${now.vid}.html?t=${t}&from=${encodeURIComponent(location.search)}`;
+});
 
 // ----------------------------------------------------------------- events
 

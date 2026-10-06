@@ -32,7 +32,7 @@ PAGE = """<!doctype html>
   <meta data-pagefind-filter="type[content]" content="{type_e}">
   <p class="back"><a href="../index.html" data-pagefind-ignore>← 검색으로</a></p>
   <h1 data-pagefind-meta="title">{title_e}</h1>
-  <p class="meta" data-pagefind-ignore>{date_label} · {duration_label} ·
+  <p class="meta" data-pagefind-ignore>{date_label} · {duration_label} · {caption_label} ·
     <a href="https://www.youtube.com/watch?v={vid}">YouTube에서 보기</a></p>
   <div class="export" data-pagefind-ignore>
     <label><input type="checkbox" id="ex-ts" checked> 타임스탬프 포함</label>
@@ -60,13 +60,15 @@ def main():
     out_dir = SITE / "video"
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    written, seconds, keep = 0, 0, set()
+    written, seconds, keep, manual = 0, 0, set(), set()
     for v in videos:
         if state.get(v["id"], {}).get("status") != "done":
             continue
         tr = load_json(TRANSCRIPTS / f"{v['id']}.json", None)
         if not tr:
             continue
+        if tr.get("kind") == "manual":
+            manual.add(v["id"])
         segs = chunk(tr["cues"])
         if not segs:
             continue
@@ -82,6 +84,7 @@ def main():
             thumb=f"https://i.ytimg.com/vi/{vid}/mqdefault.jpg",
             date_label=date or "날짜 미상",
             duration_label=fmt_time(v.get("duration") or 0),
+            caption_label="수동 자막" if tr.get("kind") == "manual" else "자동 생성 자막",
             sections=sections)
         name = f"{vid}.html"
         keep.add(name)
@@ -92,9 +95,9 @@ def main():
         seconds += v.get("duration") or 0
 
     # Title search: every playable video, including those without captions.
-    # Compact rows: [id, title, date, duration, type, has_transcript_page]
+    # Compact rows: [id, title, date, duration, type, has_transcript_page, manual]
     titles = [[v["id"], v["title"], v.get("published") or "", v.get("duration") or 0,
-               v.get("type", "기타"), int(f"{v['id']}.html" in keep)]
+               v.get("type", "기타"), int(f"{v['id']}.html" in keep), int(v["id"] in manual)]
               for v in videos
               if state.get(v["id"], {}).get("status") not in ("members", "unavailable")]
     (SITE / "titles.json").write_text(

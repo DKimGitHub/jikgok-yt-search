@@ -1,12 +1,46 @@
 // Transcript page: export the transcript as .txt (with or without [m:ss]
 // timestamps), copy it, or save the original captions as an .srt file.
 (() => {
-  const box = document.querySelector(".export");
-  if (!box) return;
-  const title = document.querySelector("main h1").textContent.trim();
   const meta = (name) => document.querySelector(`meta[data-pagefind-meta="${name}[content]"]`)?.content || "";
   const vid = meta("vid");
   const date = meta("date");
+
+  // ------------------------------------------------ links back to the search
+  // Opened from the search page's 자막 보기 (?t=SEC&from=<search query>): the back
+  // link and every timestamp return to that search with this video open.
+  const params = new URLSearchParams(location.search);
+  const from = new URLSearchParams(params.get("from") || "");
+  const searchUrl = (t) => {
+    const q = new URLSearchParams(from); // re-serialized: only ever a query string
+    q.set("v", vid);
+    if (t) q.set("t", t); else q.delete("t");
+    return `../index.html?${q}`;
+  };
+  const back = document.querySelector(".back a");
+  if (params.has("from") && back) {
+    back.href = searchUrl(params.get("t"));
+    back.textContent = "← 검색 결과로";
+  }
+  document.querySelectorAll("main section h2[id^='t-'] a").forEach((a) => {
+    a.href = searchUrl(a.parentElement.id.slice(2));
+  });
+  // Scroll to the segment that was playing.
+  if (params.has("t")) {
+    const t = Number(params.get("t"));
+    let target = null;
+    for (const h2 of document.querySelectorAll("main section h2[id^='t-']")) {
+      if (Number(h2.id.slice(2)) <= t) target = h2; else break;
+    }
+    if (target) {
+      target.closest("section").classList.add("current");
+      target.scrollIntoView({ block: "center" });
+    }
+  }
+
+  // --------------------------------------------------------------- export
+  const box = document.querySelector(".export");
+  if (!box) return;
+  const title = document.querySelector("main h1").textContent.trim();
   const rows = [...document.querySelectorAll("main section")].map((s) => [
     s.querySelector("h2").textContent.trim(),
     s.querySelector("p").textContent.trim(),
