@@ -38,6 +38,7 @@ PAGE = """<!doctype html>
     <label><input type="checkbox" id="ex-ts" checked> 타임스탬프 포함</label>
     <button type="button" id="ex-download">텍스트 파일로 저장</button>
     <button type="button" id="ex-copy">복사</button>
+    <button type="button" id="ex-srt" title="원본 자막 시간 그대로">SRT 자막 저장</button>
   </div>
 {sections}
 </main>

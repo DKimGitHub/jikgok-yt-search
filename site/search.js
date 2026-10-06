@@ -120,12 +120,45 @@ export async function findSegments(query) {
   return out.sort((a, b) => a - b);
 }
 
-const textCache = new Map();
-/** [[start, text], ...] for one video. */
-export function loadText(vid) {
-  if (!textCache.has(vid)) textCache.set(vid, fetch(new URL(`t/${vid}.json`, BASE)).then((r) => r.json()));
-  return textCache.get(vid);
+// ------------------------------------------------- captions -> segments
+// Port of ingest/chunk.py. The index stores segment start times, so this must
+// produce exactly the same segments as Python (verified over every video).
+// Python's str.isspace() set, so \s behaves the same in both languages.
+const WS = "[\t\n\v\f\r\x1c-\x1f \x85\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000]";
+const FILLER = new RegExp(`(?<=^|${WS})(?:예|네|어|음|아|뭐|막|좀|에|응|으|엄)[.,?!]*(?=$|${WS})`, "gu");
+const WS_RUN = new RegExp(`${WS}+`, "gu");
+const WS_EDGE = new RegExp(`^${WS}+|${WS}+$`, "gu");
+const stripFillers = (t) => t.replace(FILLER, " ").replace(WS_RUN, " ").replace(WS_EDGE, "");
+const cpLen = (t) => [...t].length; // Python len() counts code points
+
+/** [[start, dur, text], ...] -> [[startSecond, text], ...] (~25 s segments). */
+export function segmentsFromCues(cues, target = 25, maxChars = 320) {
+  const out = [];
+  let cur = [], curStart = 0, curLen = 0;
+  for (const [start, , raw] of [...cues].sort((a, b) => a[0] - b[0])) {
+    const text = stripFillers(raw);
+    if (!text || (text.startsWith("[") && text.endsWith("]"))) continue; // [음악], [박수]
+    const len = cpLen(text);
+    if (cur.length && (start - curStart >= target || curLen + len > maxChars)) {
+      out.push([Math.floor(curStart), cur.join(" ")]);
+      cur = []; curLen = 0;
+    }
+    if (!cur.length) curStart = start;
+    if (!cur.length || cur[cur.length - 1] !== text) { cur.push(text); curLen += len + 1; }
+  }
+  if (cur.length) out.push([Math.floor(curStart), cur.join(" ")]);
+  return out;
 }
+
+const cueCache = new Map();
+/** Original captions [[start, dur, text], ...] for one video. */
+export function loadCues(vid) {
+  if (!cueCache.has(vid)) cueCache.set(vid, fetch(new URL(`c/${vid}.json`, BASE)).then((r) => r.json()));
+  return cueCache.get(vid);
+}
+
+/** [[start, text], ...] segments for one video. */
+export const loadText = (vid) => loadCues(vid).then(segmentsFromCues);
 
 /** HTML of `text` with every occurrence of the (normalized) query wrapped in <mark>. */
 export function markMatches(text, nq, escape) {

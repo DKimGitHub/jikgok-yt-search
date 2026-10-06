@@ -8,7 +8,9 @@ without downloading every transcript, we index character pairs with positions:
   search/uni/NNN.bin   char    -> [segment, ...]                      (1-character queries)
   search/segs.bin      segment -> (video index, start second)
   search/videos.json   video index -> YouTube id
-  search/t/<id>.json   [[start, text], ...] display text, fetched for result snippets
+  search/c/<id>.json   original captions [[start, dur, text], ...]: the browser rebuilds
+                       the segments from them (search.js mirrors chunk.py) for snippets,
+                       and transcript pages export them as .srt
 
 A query of n characters downloads only the shards of its bigrams, then keeps a
 segment if those bigrams line up at consecutive positions: an exact match.
@@ -73,7 +75,7 @@ def main():
     state = load_json(STATE_FILE, {})
     if OUT.exists():
         shutil.rmtree(OUT)
-    (OUT / "t").mkdir(parents=True)
+    (OUT / "c").mkdir(parents=True)
 
     bi, uni = {}, {}            # key -> [last segment id, bytearray]
     seg_video, seg_start, vids = bytearray(), bytearray(), []
@@ -87,9 +89,9 @@ def main():
             continue
         vidx = len(vids)
         vids.append(v["id"])
-        (OUT / "t" / f"{v['id']}.json").write_text(
-            json.dumps([[s["start"], s["text"]] for s in segs], ensure_ascii=False, separators=(",", ":")),
-            encoding="utf-8")
+        # Floats are written as-is so the browser's segments match chunk() exactly.
+        (OUT / "c" / f"{v['id']}.json").write_text(
+            json.dumps(tr["cues"], ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
         for s in segs:
             seg_video += struct.pack("<H", vidx)
             seg_start += struct.pack("<I", s["start"])
